@@ -4,7 +4,7 @@
       <div class="flex">
         <div class="max-w-xs">
           <label for="wallet" class="block text-sm font-medium text-gray-700"
-            >Тикер
+            >Input
           </label>
           <div class="mt-1 relative rounded-md shadow-md">
             <input
@@ -62,7 +62,7 @@
             </dd>
           </div>
           <button
-            @click="removeCards(card)"
+            @click.stop="removeCards(card)"
             class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none"
           >
             <svg
@@ -89,10 +89,12 @@
         {{ selection.name }} - {{ selection.price }}
       </h3>
       <div class="flex items-end border-gray-600 border-b border-l h-64">
-        <div class="bg-purple-800 border w-10 h-24"></div>
-        <div class="bg-purple-800 border w-10 h-32"></div>
-        <div class="bg-purple-800 border w-10 h-48"></div>
-        <div class="bg-purple-800 border w-10 h-16"></div>
+        <div
+          v-for="(col, index) in getPercent()"
+          :key="index"
+          :style="{ height: `${col}%` }"
+          class="bg-purple-800 border w-10"
+        ></div>
       </div>
       <button
         @click="selection = null"
@@ -131,25 +133,45 @@ export default {
 
   data() {
     return {
-      input: "From input",
-      cardDefault: "i'm new",
-      cards: [
-        { name: "EURO", price: "200" },
-        { name: "USD", price: "100" },
-        { name: "RUB", price: "0" },
-      ],
+      input: "",
+      cards: [],
       selection: null,
+      diagram: [],
     };
   },
 
   methods: {
     add() {
-      const newCard = { name: this.cardDefault, price: "300" };
+      const newCard = { name: this.input, price: "..." };
       this.cards.push(newCard);
+
+      setTimeout(async () => {
+        const request = await fetch(
+          `https://min-api.cryptocompare.com/data/price?fsym=${newCard.name}&tsyms=USD&api_key=bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34`,
+        );
+        const response = await request.json();
+        this.cards.find((card) => card.name === newCard.name).price =
+          response.USD > 1
+            ? response.USD.toFixed(2)
+            : response.USD.toPrecision(2);
+
+        this.diagram.push(response.USD);
+        console.log(this.diagram);
+
+      }, 3000);
+
       this.input = "";
     },
     removeCards(card) {
       this.cards = this.cards.filter((item) => item !== card);
+      this.selection = null;
+    },
+    getPercent() {
+      const maxValue = Math.max(...this.diagram);
+      const minValue = Math.min(...this.diagram);
+      return this.diagram.map((itemPrice) => {
+        5 + ((itemPrice - minValue) * 95) / maxValue - minValue;
+      });
     },
   },
 };
