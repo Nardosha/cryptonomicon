@@ -51,11 +51,17 @@
                 v-for="(hint, idx) in hints"
                 :key="idx"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+                @click="add"
               >
                 {{ hint }}
               </span>
             </div>
-            <div class="text-sm text-red-600">Такой тикер уже добавлен</div>
+            <div
+              v-if="cards.find((card) => card.name === this.input)"
+              class="text-sm text-red-600"
+            >
+              Такой тикер уже добавлен
+            </div>
           </div>
         </div>
         <button
@@ -124,6 +130,7 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
+      {{ cards }}
       <section v-if="selection" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{ selection.name }} - USD
@@ -191,18 +198,26 @@ export default {
         .then((json) => ({ ...this.listSummary } = json.Data))
         .then((res) => (this.monetsList = Object.keys(res)));
     }, 2000);
-    console.log(this.monetsList);
   },
 
   watch: {
     input() {
-      this.getExistsCars();
+      this.checkCardInMonetList();
+      this.hitsHandler();
     },
   },
 
   methods: {
-    add() {
-      const newCard = { name: this.input, price: "..." };
+    add(e) {
+      const cardName = (
+        e.target.innerHTML ? e.target.innerHTML : this.input
+      ).toUpperCase();
+
+      const newCard = { name: cardName, price: "..." };
+
+      if (!this.monetsList.includes(newCard.name)) return;
+      if (this.cards.find((item) => item.name === cardName)) return;
+
       this.cards.push(newCard);
 
       setInterval(async () => {
@@ -222,14 +237,17 @@ export default {
       }, 3000);
       this.input = "";
     },
+
     selectCard(card) {
       this.selection = card;
       this.diagram = [];
     },
+
     removeCards(card) {
       this.cards = this.cards.filter((item) => item !== card);
       this.selection = null;
     },
+
     getPercent() {
       const maxValue = Math.max(...this.diagram);
       const minValue = Math.min(...this.diagram);
@@ -237,12 +255,18 @@ export default {
         return 5 + ((itemPrice - minValue) * 95) / (maxValue - minValue);
       });
     },
-    getExistsCars() {
+
+    checkCardInMonetList() {
       let matches = this.input.toUpperCase();
       this.hints = this.monetsList.filter((card) => {
         return card.startsWith(matches) ? card : false;
       });
-      this.hints.length = 4;
+    },
+
+    hitsHandler() {
+      if (this.hints) {
+        this.hints.length = this.hints.length > 4 ? 4 : this.hints.length;
+      }
     },
   },
 };
