@@ -56,10 +56,7 @@
                 {{ hint }}
               </span>
             </div>
-            <div
-              v-if="cards.find((card) => card.name === this.input)"
-              class="text-sm text-red-600"
-            >
+            <div v-if="!isValid" class="text-sm text-red-600">
               Такой тикер уже добавлен
             </div>
           </div>
@@ -188,6 +185,7 @@ export default {
       listSummary: {},
       monetsList: [],
       hints: [],
+      isValid: true,
     };
   },
 
@@ -202,6 +200,7 @@ export default {
 
   watch: {
     input() {
+      this.isValid = true;
       this.checkCardInMonetList();
       this.hitsHandler();
     },
@@ -212,6 +211,9 @@ export default {
       const cardName = (
         e.target.innerHTML ? e.target.innerHTML : this.input
       ).toUpperCase();
+
+      this.isValid = this.validate(cardName);
+      if (!this.isValid) return;
 
       const newCard = { name: cardName, price: "..." };
 
@@ -267,6 +269,10 @@ export default {
       if (this.hints) {
         this.hints.length = this.hints.length > 4 ? 4 : this.hints.length;
       }
+    },
+
+    validate(cardName) {
+      return !this.cards.find((card) => card.name === cardName);
     },
   },
 };
