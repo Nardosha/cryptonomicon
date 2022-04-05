@@ -196,6 +196,14 @@ export default {
         .then((json) => ({ ...this.listSummary } = json.Data))
         .then((res) => (this.monetsList = Object.keys(res)));
     }, 2000);
+    //! FIX!
+    const cardsList = localStorage.getItem("cryptonomicon-list");
+
+    if (cardsList) {
+      this.cards.forEach((card) => {
+        this.updateData(card.name);
+      });
+    }
   },
 
   watch: {
@@ -207,6 +215,24 @@ export default {
   },
 
   methods: {
+    updateData(cardName) {
+      setInterval(async () => {
+        const request = await fetch(
+          `https://min-api.cryptocompare.com/data/price?fsym=${cardName}&tsyms=USD&api_key=bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34`,
+        );
+        const response = await request.json();
+        // currentTicker.price =  data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+        this.cards.find((card) => card.name === cardName).price =
+          response.USD > 1
+            ? response.USD.toFixed(2)
+            : response.USD.toPrecision(2);
+
+        if (this.selection?.name === cardName) {
+          this.diagram.push(response.USD);
+        }
+      }, 3000);
+    },
+
     add(e) {
       const cardName = (
         e.target.innerHTML ? e.target.innerHTML : this.input
@@ -221,22 +247,9 @@ export default {
       if (this.cards.find((item) => item.name === cardName)) return;
 
       this.cards.push(newCard);
-
-      setInterval(async () => {
-        const request = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${newCard.name}&tsyms=USD&api_key=bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34`,
-        );
-        const response = await request.json();
-        // currentTicker.price =  data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-        this.cards.find((card) => card.name === newCard.name).price =
-          response.USD > 1
-            ? response.USD.toFixed(2)
-            : response.USD.toPrecision(2);
-
-        if (this.selection?.name === newCard.name) {
-          this.diagram.push(response.USD);
-        }
-      }, 3000);
+      console.log(this.cards);
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.cards));
+      this.updateData(newCard.name);
       this.input = "";
     },
 
@@ -259,6 +272,7 @@ export default {
     },
 
     checkCardInMonetList() {
+      console.log("fsfsfs");
       let matches = this.input.toUpperCase();
       this.hints = this.monetsList.filter((card) => {
         return card.startsWith(matches) ? card : false;
