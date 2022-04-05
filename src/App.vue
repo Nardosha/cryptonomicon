@@ -198,6 +198,7 @@ export default {
     }, 2000);
     //! FIX!
     const cardsList = localStorage.getItem("cryptonomicon-list");
+    this.cards = JSON.parse(cardsList);
 
     if (cardsList) {
       this.cards.forEach((card) => {
