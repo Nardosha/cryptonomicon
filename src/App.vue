@@ -51,7 +51,7 @@
                 v-for="(hint, idx) in hints"
                 :key="idx"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-                @click="add"
+                @click="addToInput(hint)"
               >
                 {{ hint }}
               </span>
@@ -85,9 +85,23 @@
 
       <template v-if="cards.length">
         <hr class="w-full border-t border-gray-600 my-4" />
+        <div>
+          Фильтр:
+          <input type="text" v-model="filter" />
+          <button
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Веперд
+          </button>
+          <button
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Назад
+          </button>
+        </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="card in cards"
+            v-for="card in filterCards()"
             :key="card.name"
             @click="selectCard(card)"
             :class="{
@@ -186,6 +200,8 @@ export default {
       monetsList: [],
       hints: [],
       isValid: true,
+      currentPage: 1,
+      filter: "",
     };
   },
 
@@ -196,16 +212,18 @@ export default {
         .then((json) => ({ ...this.listSummary } = json.Data))
         .then((res) => (this.monetsList = Object.keys(res)));
     }, 2000);
-    //! FIX!
+
     const cardsList = localStorage.getItem("cryptonomicon-list");
-    this.cards = JSON.parse(cardsList);
 
     if (cardsList) {
+      this.cards = JSON.parse(cardsList);
       this.cards.forEach((card) => {
         this.updateData(card.name);
       });
     }
   },
+
+  computed() {},
 
   watch: {
     input() {
@@ -222,7 +240,6 @@ export default {
           `https://min-api.cryptocompare.com/data/price?fsym=${cardName}&tsyms=USD&api_key=bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34`,
         );
         const response = await request.json();
-        // currentTicker.price =  data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
         this.cards.find((card) => card.name === cardName).price =
           response.USD > 1
             ? response.USD.toFixed(2)
@@ -231,24 +248,24 @@ export default {
         if (this.selection?.name === cardName) {
           this.diagram.push(response.USD);
         }
-      }, 3000);
+      }, 5000);
     },
 
-    add(e) {
-      const cardName = (
-        e.target.innerHTML ? e.target.innerHTML : this.input
-      ).toUpperCase();
+    addToInput(cardName) {
+      this.input = cardName;
+    },
+
+    add() {
+      const cardName = this.input.toUpperCase();
 
       this.isValid = this.validate(cardName);
       if (!this.isValid) return;
+      this.filter = "";
 
       const newCard = { name: cardName, price: "..." };
-
       if (!this.monetsList.includes(newCard.name)) return;
-      if (this.cards.find((item) => item.name === cardName)) return;
 
       this.cards.push(newCard);
-      console.log(this.cards);
       localStorage.setItem("cryptonomicon-list", JSON.stringify(this.cards));
       this.updateData(newCard.name);
       this.input = "";
@@ -262,6 +279,7 @@ export default {
     removeCards(card) {
       this.cards = this.cards.filter((item) => item !== card);
       this.selection = null;
+      this.deleteFromLocalStorage(card.name);
     },
 
     getPercent() {
@@ -273,7 +291,6 @@ export default {
     },
 
     checkCardInMonetList() {
-      console.log("fsfsfs");
       let matches = this.input.toUpperCase();
       this.hints = this.monetsList.filter((card) => {
         return card.startsWith(matches) ? card : false;
@@ -288,6 +305,18 @@ export default {
 
     validate(cardName) {
       return !this.cards.find((card) => card.name === cardName);
+    },
+
+    filterCards() {
+      return this.cards.filter((card) =>
+        card.name.includes(this.filter.toUpperCase()),
+      );
+    },
+
+    deleteFromLocalStorage(deletedCard) {
+      const cards = JSON.parse(localStorage.getItem("cryptonomicon-list"));
+      const newCards = cards.filter((card) => card.name !== deletedCard);
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(newCards));
     },
   },
 };
