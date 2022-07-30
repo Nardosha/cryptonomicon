@@ -1,29 +1,5 @@
 <template>
   <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
-    <!--    <div-->
-    <!--      class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center"-->
-    <!--    >-->
-    <!--      <svg-->
-    <!--        class="animate-spin -ml-1 mr-3 h-12 w-12 text-white"-->
-    <!--        xmlns="http://www.w3.org/2000/svg"-->
-    <!--        fill="none"-->
-    <!--        viewBox="0 0 24 24"-->
-    <!--      >-->
-    <!--        <circle-->
-    <!--          class="opacity-25"-->
-    <!--          cx="12"-->
-    <!--          cy="12"-->
-    <!--          r="10"-->
-    <!--          stroke="currentColor"-->
-    <!--          stroke-width="4"-->
-    <!--        ></circle>-->
-    <!--        <path-->
-    <!--          class="opacity-75"-->
-    <!--          fill="currentColor"-->
-    <!--          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"-->
-    <!--        ></path>-->
-    <!--      </svg>-->
-    <!--    </div>-->
     <div class="container">
       <section>
         <div class="flex">
@@ -89,15 +65,20 @@
           Фильтр:
           <input type="text" v-model="filter" />
           <button
+            v-if="currentPage > 1"
             class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-          >
-            Веперд
-          </button>
-          <button
-            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            @click="currentPage = currentPage - 1"
           >
             Назад
           </button>
+          <button
+            v-if="isNextPage"
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            @click="currentPage = currentPage + 1"
+          >
+            Вперед
+          </button>
+          <span>{{ currentPage }}</span>
         </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
@@ -202,10 +183,23 @@ export default {
       isValid: true,
       currentPage: 1,
       filter: "",
+      isNextPage: false,
     };
   },
 
   created() {
+    const windowParams = Object.fromEntries(
+      new URL(window.location).searchParams.entries(),
+    );
+
+    if (windowParams.filter) {
+      this.filter = windowParams.filter;
+    }
+
+    if (windowParams.page) {
+      this.currentPage = windowParams.page;
+    }
+
     setTimeout(() => {
       fetch("https://min-api.cryptocompare.com/data/all/coinlist?summary=true")
         .then((res) => res.json())
@@ -226,6 +220,24 @@ export default {
   computed() {},
 
   watch: {
+    filter() {
+      console.log("FILTER", this.filter);
+      this.currentPage = 1;
+
+      window.history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.currentPage}`,
+      );
+    },
+
+    currentPage() {
+      window.history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.currentPage}`,
+      );
+    },
     input() {
       this.isValid = true;
       this.checkCardInMonetList();
@@ -308,9 +320,16 @@ export default {
     },
 
     filterCards() {
-      return this.cards.filter((card) =>
+      const start = (this.currentPage - 1) * 6;
+      const end = this.currentPage * 6;
+
+      const filteredCards = this.cards.filter((card) =>
         card.name.includes(this.filter.toUpperCase()),
       );
+
+      this.isNextPage = filteredCards.length > end;
+      console.log(filteredCards.length, end);
+      return filteredCards.slice(start, end);
     },
 
     deleteFromLocalStorage(deletedCard) {
