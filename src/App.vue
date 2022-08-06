@@ -72,7 +72,7 @@
             Назад
           </button>
           <button
-            v-if="isNextPage"
+            v-if="hasNextPage"
             class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
             @click="currentPage = currentPage + 1"
           >
@@ -82,11 +82,11 @@
         </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="card in filterCards()"
+            v-for="card in paginatedCards"
             :key="card.name"
             @click="selectCard(card)"
             :class="{
-              'border-4': selection === card,
+              'border-4': selectedCard === card,
             }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
@@ -122,21 +122,20 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      {{ cards }}
-      <section v-if="selection" class="relative">
+      <section v-if="selectedCard" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          {{ selection.name }} - USD
+          {{ selectedCard.name }} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-            v-for="(col, index) in getPercent()"
+            v-for="(col, index) in normalizedDiagram"
             :key="index"
             :style="{ height: `${col}%` }"
             class="bg-purple-800 border w-10"
           ></div>
         </div>
         <button
-          @click="selection = null"
+          @click="selectedCard = null"
           type="button"
           class="absolute top-0 right-0"
         >
@@ -169,21 +168,37 @@
 
 <script>
 export default {
+  // TODO
+  // 9. Наличие в состоянии зЗАВИСИМЫХ ДАННЫХ / 6
+  // 2. Загрузка данных карточки после ее удаления / 5
+  // 4. Запросы прямо в компоненте ? / 5
+  // 5. Обработка ошибок в API / 5
+  // 6. localStorage не работает на анонимных вкладках / 4
+  // 3. Количесвто запросов? / 4
+  // 1. Повторение кода в watch / 3
+  // 7. Отображение графика если много цен / 2
+  // 8. Магичсекие строки и числа: url, localStorage's key, задержка на обновление, кол-во карточек на странице / 1
+
+  // Параллельно
+  // Если на диаграмме одинаковые значения, то выглядит нечитаемо
   name: "App",
 
   data() {
     return {
       input: "",
+      filter: "",
+
       cards: [],
-      selection: null,
+      selectedCard: null,
+
       diagram: [],
+
+      currentPage: 1,
+
       listSummary: {},
       monetsList: [],
       hints: [],
       isValid: true,
-      currentPage: 1,
-      filter: "",
-      isNextPage: false,
     };
   },
 
@@ -192,20 +207,15 @@ export default {
       new URL(window.location).searchParams.entries(),
     );
 
-    if (windowParams.filter) {
-      this.filter = windowParams.filter;
-    }
+    Object.assign(this, windowParams);
 
-    if (windowParams.page) {
-      this.currentPage = windowParams.page;
-    }
-
-    setTimeout(() => {
-      fetch("https://min-api.cryptocompare.com/data/all/coinlist?summary=true")
-        .then((res) => res.json())
-        .then((json) => ({ ...this.listSummary } = json.Data))
-        .then((res) => (this.monetsList = Object.keys(res)));
-    }, 2000);
+    // if (windowParams.filter) {
+    //   this.filter = windowParams.filter;
+    // }
+    //
+    // if (windowParams.page) {
+    //   this.currentPage = windowParams.page;
+    // }
 
     const cardsList = localStorage.getItem("cryptonomicon-list");
 
@@ -215,29 +225,84 @@ export default {
         this.updateData(card.name);
       });
     }
+
+    setTimeout(() => {
+      fetch("https://min-api.cryptocompare.com/data/all/coinlist?summary=true")
+        .then((res) => res.json())
+        .then((json) => ({ ...this.listSummary } = json.Data))
+        .then((res) => (this.monetsList = Object.keys(res)));
+    }, 2000);
   },
 
-  computed() {},
+  computed: {
+    stateParams() {
+      return {
+        page: this.currentPage,
+        filter: this.filter,
+      };
+    },
+
+    startIndex() {
+      return (this.currentPage - 1) * 6;
+    },
+    endIndex() {
+      return this.currentPage * 6;
+    },
+    hasNextPage() {
+      return this.filteredCards.length > this.endIndex;
+    },
+    filteredCards() {
+      return this.cards.filter((card) =>
+        card.name.includes(this.filter.toUpperCase()),
+      );
+    },
+    paginatedCards() {
+      return this.filteredCards.slice(this.startIndex, this.endIndex);
+    },
+
+    normalizedDiagram() {
+      const maxValue = Math.max(...this.diagram);
+      const minValue = Math.min(...this.diagram);
+      if (maxValue === minValue) {
+        this.diagram.map(() => 50);
+      }
+      return this.diagram.map(
+        (itemPrice) =>
+          5 + ((itemPrice - minValue) * 95) / (maxValue - minValue),
+      );
+    },
+  },
 
   watch: {
+    selectedCard() {
+      this.diagram = [];
+    },
+
+    cards(newVal, oldVal) {
+      console.log(newVal.length, oldVal.length);
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.cards));
+
+      // при удалении вотч работает, при добавлении - нет
+    },
+
+    paginatedCards() {
+      if (this.paginatedCards.length === 0 && this.currentPage > 1) {
+        this.currentPage -= 1;
+      }
+    },
+
+    stateParams(params) {
+      window.history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${params.filter}&page=${params.page}`,
+      );
+    },
+
     filter() {
-      console.log("FILTER", this.filter);
       this.currentPage = 1;
-
-      window.history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.currentPage}`,
-      );
     },
 
-    currentPage() {
-      window.history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.currentPage}`,
-      );
-    },
     input() {
       this.isValid = true;
       this.checkCardInMonetList();
@@ -257,7 +322,7 @@ export default {
             ? response.USD.toFixed(2)
             : response.USD.toPrecision(2);
 
-        if (this.selection?.name === cardName) {
+        if (this.selectedCard?.name === cardName) {
           this.diagram.push(response.USD);
         }
       }, 5000);
@@ -272,34 +337,29 @@ export default {
 
       this.isValid = this.validate(cardName);
       if (!this.isValid) return;
+
       this.filter = "";
 
       const newCard = { name: cardName, price: "..." };
       if (!this.monetsList.includes(newCard.name)) return;
 
-      this.cards.push(newCard);
-      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.cards));
+      // this.cards.push(newCard);
+      this.cards = [...this.cards, newCard];
+
       this.updateData(newCard.name);
       this.input = "";
     },
 
     selectCard(card) {
-      this.selection = card;
-      this.diagram = [];
+      this.selectedCard = card;
     },
 
     removeCards(card) {
       this.cards = this.cards.filter((item) => item !== card);
-      this.selection = null;
-      this.deleteFromLocalStorage(card.name);
-    },
-
-    getPercent() {
-      const maxValue = Math.max(...this.diagram);
-      const minValue = Math.min(...this.diagram);
-      return this.diagram.map((itemPrice) => {
-        return 5 + ((itemPrice - minValue) * 95) / (maxValue - minValue);
-      });
+      if (this.selectedCard === card) {
+        this.selectedCard = null;
+        this.deleteFromLocalStorage(card.name);
+      }
     },
 
     checkCardInMonetList() {
@@ -317,19 +377,6 @@ export default {
 
     validate(cardName) {
       return !this.cards.find((card) => card.name === cardName);
-    },
-
-    filterCards() {
-      const start = (this.currentPage - 1) * 6;
-      const end = this.currentPage * 6;
-
-      const filteredCards = this.cards.filter((card) =>
-        card.name.includes(this.filter.toUpperCase()),
-      );
-
-      this.isNextPage = filteredCards.length > end;
-      console.log(filteredCards.length, end);
-      return filteredCards.slice(start, end);
     },
 
     deleteFromLocalStorage(deletedCard) {
