@@ -27,7 +27,7 @@
                 v-for="(hint, idx) in hints"
                 :key="idx"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-                @click="addToInput(hint)"
+                @click="input = hint"
               >
                 {{ hint }}
               </span>
@@ -167,6 +167,7 @@
 </template>
 
 <script>
+import { loadCards } from "./api.js";
 export default {
   // TODO
   // 9. Наличие в состоянии зЗАВИСИМЫХ ДАННЫХ / 6
@@ -222,7 +223,7 @@ export default {
     if (cardsList) {
       this.cards = JSON.parse(cardsList);
       this.cards.forEach((card) => {
-        this.updateData(card.name);
+        this.updateCards(card.name);
       });
     }
 
@@ -232,6 +233,10 @@ export default {
         .then((json) => ({ ...this.listSummary } = json.Data))
         .then((res) => (this.monetsList = Object.keys(res)));
     }, 2000);
+  },
+
+  updated() {
+    console.log("UPDATE");
   },
 
   computed: {
@@ -311,25 +316,17 @@ export default {
   },
 
   methods: {
-    updateData(cardName) {
+    updateCards(cardName) {
       setInterval(async () => {
-        const request = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${cardName}&tsyms=USD&api_key=bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34`,
-        );
-        const response = await request.json();
-        this.cards.find((card) => card.name === cardName).price =
-          response.USD > 1
-            ? response.USD.toFixed(2)
-            : response.USD.toPrecision(2);
+        const newCard = await loadCards(cardName);
+        console.log(newCard);
 
+        this.cards.find((card) => card.name === cardName).price =
+          newCard.USD > 1 ? newCard.USD.toFixed(2) : newCard.USD.toPrecision(2);
         if (this.selectedCard?.name === cardName) {
-          this.diagram.push(response.USD);
+          this.diagram.push(newCard.USD);
         }
       }, 5000);
-    },
-
-    addToInput(cardName) {
-      this.input = cardName;
     },
 
     add() {
@@ -346,7 +343,7 @@ export default {
       // this.cards.push(newCard);
       this.cards = [...this.cards, newCard];
 
-      this.updateData(newCard.name);
+      this.updateCards(newCard.name);
       this.input = "";
     },
 
