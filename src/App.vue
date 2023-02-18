@@ -72,23 +72,23 @@
             Назад
           </button>
           <button
-            v-if="isNextPage"
+            v-if="hasNextPage"
             class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
             @click="currentPage = currentPage + 1"
           >
             Вперед
           </button>
-          <span>{{ currentPage }}</span>
+          <span>Текущая страница {{ currentPage }}</span>
         </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="card in filterCards()"
+            v-for="card in paginatedCards"
             :key="card.name"
             @click="selectCard(card)"
             :class="{
-              'border-4': selection === card,
+              'border-4': selectedCard === card,
             }"
-            class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
+            class="bg-purple overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
             <div class="px-4 py-5 sm:p-6 text-center">
               <dt class="text-sm font-medium text-gray-500 truncate">
@@ -100,7 +100,7 @@
             </div>
             <div class="w-full border-t border-gray-200"></div>
             <button
-              @click.stop="removeCards(card)"
+              @click.stop="handleDelete(card)"
               class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none"
             >
               <svg
@@ -123,20 +123,20 @@
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
       {{ cards }}
-      <section v-if="selection" class="relative">
+      <section v-if="selectedCard" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          {{ selection.name }} - USD
+          {{ selectedCard.name }} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-            v-for="(col, index) in getPercent()"
+            v-for="(col, index) in normalizedDiagram"
             :key="index"
             :style="{ height: `${col}%` }"
             class="bg-purple-800 border w-10"
           ></div>
         </div>
         <button
-          @click="selection = null"
+          @click="selectedCard = null"
           type="button"
           class="absolute top-0 right-0"
         >
@@ -175,7 +175,7 @@ export default {
     return {
       input: "",
       cards: [],
-      selection: null,
+      selectedCard: null,
       diagram: [],
       listSummary: {},
       monetsList: [],
@@ -183,7 +183,6 @@ export default {
       isValid: true,
       currentPage: 1,
       filter: "",
-      isNextPage: false,
     };
   },
 
@@ -217,27 +216,76 @@ export default {
     }
   },
 
-  computed() {},
+  computed: {
+    hasNextPage() {
+      return this.filteredCards.length > this.endIndex;
+    },
+
+    startIndex() {
+      return (this.currentPage - 1) * 6;
+    },
+
+    endIndex() {
+      return this.currentPage * 6;
+    },
+
+    filteredCards() {
+      return this.cards.filter((card) =>
+        card.name.includes(this.filter.toUpperCase()),
+      );
+    },
+
+    paginatedCards() {
+      return this.filteredCards.slice(this.startIndex, this.endIndex);
+    },
+
+    normalizedDiagram() {
+      const maxValue = Math.max(...this.diagram);
+      const minValue = Math.min(...this.diagram);
+      if (maxValue === minValue) {
+        this.diagram.map(() => 50);
+      }
+
+      return this.diagram.map((itemPrice) => {
+        return 5 + ((itemPrice - minValue) * 95) / (maxValue - minValue);
+      });
+    },
+
+    pageStateOptions() {
+      return {
+        page: this.currentPage,
+        filter: this.filter,
+      };
+    },
+  },
 
   watch: {
+    pageStateOptions() {
+      window.history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.pageStateOptions.filter}&page=${this.pageStateOptions.page}`,
+      );
+    },
+
+    cards() {
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.cards));
+    },
+
+    selectedCard() {
+      this.diagram = [];
+    },
+
     filter() {
-      console.log("FILTER", this.filter);
       this.currentPage = 1;
-
-      window.history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.currentPage}`,
-      );
     },
 
-    currentPage() {
-      window.history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.currentPage}`,
-      );
+    paginatedCards() {
+      if (!this.paginatedCards.length && this.currentPage > 1) {
+        this.currentPage -= 1;
+      }
     },
+
     input() {
       this.isValid = true;
       this.checkCardInMonetList();
@@ -257,7 +305,7 @@ export default {
             ? response.USD.toFixed(2)
             : response.USD.toPrecision(2);
 
-        if (this.selection?.name === cardName) {
+        if (this.selectedCard?.name === cardName) {
           this.diagram.push(response.USD);
         }
       }, 5000);
@@ -277,29 +325,22 @@ export default {
       const newCard = { name: cardName, price: "..." };
       if (!this.monetsList.includes(newCard.name)) return;
 
-      this.cards.push(newCard);
-      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.cards));
+      this.cards = [...this.cards, newCard];
       this.updateData(newCard.name);
       this.input = "";
     },
 
     selectCard(card) {
-      this.selection = card;
+      this.selectedCard = card;
       this.diagram = [];
     },
 
-    removeCards(card) {
+    handleDelete(card) {
       this.cards = this.cards.filter((item) => item !== card);
-      this.selection = null;
+      if (this.selectedCard === card) {
+        this.selectedCard = null;
+      }
       this.deleteFromLocalStorage(card.name);
-    },
-
-    getPercent() {
-      const maxValue = Math.max(...this.diagram);
-      const minValue = Math.min(...this.diagram);
-      return this.diagram.map((itemPrice) => {
-        return 5 + ((itemPrice - minValue) * 95) / (maxValue - minValue);
-      });
     },
 
     checkCardInMonetList() {
@@ -317,19 +358,6 @@ export default {
 
     validate(cardName) {
       return !this.cards.find((card) => card.name === cardName);
-    },
-
-    filterCards() {
-      const start = (this.currentPage - 1) * 6;
-      const end = this.currentPage * 6;
-
-      const filteredCards = this.cards.filter((card) =>
-        card.name.includes(this.filter.toUpperCase()),
-      );
-
-      this.isNextPage = filteredCards.length > end;
-      console.log(filteredCards.length, end);
-      return filteredCards.slice(start, end);
     },
 
     deleteFromLocalStorage(deletedCard) {
