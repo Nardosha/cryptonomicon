@@ -95,7 +95,7 @@
                 {{ card.name }} - USD
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ card.price }}
+                {{ formatPrice(card.price) }}
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
@@ -168,6 +168,8 @@
 </template>
 
 <script>
+import { getAllCards, subscribeToCard, unsubscribeToCard } from "@/api";
+
 export default {
   name: "App",
 
@@ -178,7 +180,7 @@ export default {
       selectedCard: null,
       diagram: [],
       listSummary: {},
-      monetsList: [],
+      allCards: [],
       hints: [],
       isValid: true,
       currentPage: 1,
@@ -186,7 +188,7 @@ export default {
     };
   },
 
-  created() {
+  async created() {
     const windowParams = Object.fromEntries(
       new URL(window.location).searchParams.entries(),
     );
@@ -199,19 +201,18 @@ export default {
       this.currentPage = windowParams.page;
     }
 
-    setTimeout(() => {
-      fetch("https://min-api.cryptocompare.com/data/all/coinlist?summary=true")
-        .then((res) => res.json())
-        .then((json) => ({ ...this.listSummary } = json.Data))
-        .then((res) => (this.monetsList = Object.keys(res)));
-    }, 2000);
+    this.allCards = await getAllCards();
 
-    const cardsList = localStorage.getItem("cryptonomicon-list");
+    const savedCards = localStorage.getItem("cryptonomicon-list");
 
-    if (cardsList) {
-      this.cards = JSON.parse(cardsList);
+    if (savedCards) {
+      this.cards = JSON.parse(savedCards);
+
       this.cards.forEach((card) => {
-        this.updateData(card.name);
+        // const price = card.price;
+        subscribeToCard(card.name, (newPrice) =>
+          this.updateCards(card.name, newPrice),
+        );
       });
     }
   },
@@ -294,21 +295,17 @@ export default {
   },
 
   methods: {
-    updateData(cardName) {
-      setInterval(async () => {
-        const request = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${cardName}&tsyms=USD&api_key=bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34`,
-        );
-        const response = await request.json();
-        this.cards.find((card) => card.name === cardName).price =
-          response.USD > 1
-            ? response.USD.toFixed(2)
-            : response.USD.toPrecision(2);
+    formatPrice(price) {
+      if (price === "-") return price;
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2);
+    },
 
-        if (this.selectedCard?.name === cardName) {
-          this.diagram.push(response.USD);
+    updateCards(updatedCardName, updatedPrice) {
+      this.cards.find((card) => {
+        if (card.name === updatedCardName) {
+          card.price = updatedPrice;
         }
-      }, 5000);
+      });
     },
 
     addToInput(cardName) {
@@ -322,11 +319,14 @@ export default {
       if (!this.isValid) return;
       this.filter = "";
 
-      const newCard = { name: cardName, price: "..." };
-      if (!this.monetsList.includes(newCard.name)) return;
+      const newCard = { name: cardName, price: "-" };
+      if (!this.allCards.includes(newCard.name)) return;
 
       this.cards = [...this.cards, newCard];
-      this.updateData(newCard.name);
+      this.filter = "";
+      subscribeToCard(cardName, (newPrice) =>
+        this.updateCards(cardName, newPrice),
+      );
       this.input = "";
     },
 
@@ -340,12 +340,13 @@ export default {
       if (this.selectedCard === card) {
         this.selectedCard = null;
       }
+      unsubscribeToCard(card.name);
       this.deleteFromLocalStorage(card.name);
     },
 
     checkCardInMonetList() {
       let matches = this.input.toUpperCase();
-      this.hints = this.monetsList.filter((card) => {
+      this.hints = this.allCards.filter((card) => {
         return card.startsWith(matches) ? card : false;
       });
     },
