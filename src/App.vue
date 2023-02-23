@@ -88,6 +88,7 @@
             @click="selectCard(card)"
             :class="{
               'border-4': selectedCard === card,
+              'bg-red-100': !card.hasPriceInfo,
             }"
             class="bg-purple overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
@@ -169,7 +170,12 @@
 </template>
 
 <script>
-import { getAllCards, subscribeToCard, unsubscribeToCard } from "@/api";
+import {
+  getAllCards,
+  subscribeToBtc,
+  subscribeToCard,
+  unsubscribeToCard,
+} from "@/api";
 
 export default {
   name: "App",
@@ -284,16 +290,23 @@ export default {
 
   methods: {
     formatPrice(inputPrice) {
-      if (!inputPrice || inputPrice === "-") return price;
+      if (!inputPrice || inputPrice === "-") return "-";
       const price = Number(inputPrice);
       return price > 1 ? price.toFixed(2) : price.toPrecision(2);
     },
 
     updateCards(updatedCardName, updatedPrice) {
-      this.savedCards.find((card) => {
+      this.savedCards.forEach((card) => {
         if (card.name === updatedCardName) {
+          if (!updatedPrice) {
+            card.price = "-";
+            card.hasPriceInfo = false;
+            return;
+          }
+
           this.diagram.push(updatedPrice);
           card.price = updatedPrice;
+          card.hasPriceInfo = true;
         }
       });
     },
@@ -313,8 +326,7 @@ export default {
       this.isValid = this.validate(cardName);
       if (!this.isValid) return;
 
-      const newCard = { name: cardName, price: "-" };
-      if (!this.cardList.includes(newCard.name)) return;
+      const newCard = { name: cardName, price: "-", hasPriceInfo: false };
 
       this.savedCards = [...this.savedCards, newCard];
       this.filter = "";
@@ -364,9 +376,8 @@ export default {
         return false;
       }
 
-      const isNonExistCard = this.cardList.find(
-        (card) => card.name === cardName,
-      );
+      const isNonExistCard = this.cardList.includes(cardName);
+
       if (!isNonExistCard) {
         this.validationMessage = " Валюты не существует";
         return false;

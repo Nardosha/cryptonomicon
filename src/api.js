@@ -1,6 +1,9 @@
 const API_KEY =
   "bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34";
 const AGGREGATE_INDEX = "5";
+const INVALID__SUB_INDEX = "500";
+const PROCESSABLE_INDEXES = [AGGREGATE_INDEX, INVALID__SUB_INDEX];
+
 const cardHandlers = new Map();
 
 const socket = new WebSocket(
@@ -13,7 +16,8 @@ socket.addEventListener("message", (e) => {
     FROMSYMBOL: currency,
     PRICE: newPrice,
   } = JSON.parse(e.data);
-  if (type !== AGGREGATE_INDEX || !newPrice) return;
+
+  if (!PROCESSABLE_INDEXES.includes(type)) return;
 
   const handlers = cardHandlers.get(currency) ?? [];
   handlers.forEach((fn) => fn(newPrice));
