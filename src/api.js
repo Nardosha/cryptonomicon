@@ -1,31 +1,45 @@
 const API_KEY =
   "bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34";
-
+const AGREGATE_INDEX = "5";
 const cardHandlers = new Map();
 
-// todo: refactor to use URLSearchParams
-export const loadCards = () => {
-  if (!cardHandlers.size) {
+const socket = new WebSocket(
+  `wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`,
+);
+
+socket.addEventListener("message", (e) => {
+  const {
+    TYPE: type,
+    FROMSYMBOL: currency,
+    PRICE: newPrice,
+  } = JSON.parse(e.data);
+  if (type !== AGREGATE_INDEX || !newPrice) return;
+
+  // debugger;
+  const handlers = cardHandlers.get(currency) ?? [];
+  handlers.forEach((fn) => fn(newPrice));
+  console.log(e);
+});
+
+function subscribeToCardOnWs(cardName) {
+  const message = JSON.stringify({
+    action: "SubAdd",
+    subs: [`5~CCCAGG~${cardName}~USD`],
+  });
+
+  if (socket.readyState === socket.OPEN) {
+    socket.send(message);
     return;
   }
 
-  fetch(
-    `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${[
-      ...cardHandlers.keys(),
-    ].join(",")}&tsyms=USD&api_key=${API_KEY}`,
-  )
-    .then((res) => res.json())
-    .then((rowData) => {
-      const updatedPrices = Object.fromEntries(
-        Object.entries(rowData).map(([key, value]) => [key, value.USD]),
-      );
-
-      Object.entries(updatedPrices).forEach(([currency, newPrice]) => {
-        const handlers = cardHandlers.get(currency) ?? [];
-        handlers.forEach((fn) => fn(newPrice));
-      });
-    });
-};
+  socket.addEventListener(
+    "open",
+    () => {
+      socket.send(message);
+    },
+    { once: true },
+  );
+}
 
 export const getAllCards = () =>
   fetch("https://min-api.cryptocompare.com/data/all/coinlist?summary=true")
@@ -36,6 +50,7 @@ export const subscribeToCard = (cardNme, cb) => {
   const subscribers = cardHandlers.get(cardNme) || [];
 
   cardHandlers.set(cardNme, [...subscribers, cb]);
+  subscribeToCardOnWs(cardNme);
 };
 
 export const unsubscribeToCard = (cardNme, cb) => {
@@ -46,4 +61,5 @@ export const unsubscribeToCard = (cardNme, cb) => {
   );
 };
 
-setInterval(loadCards, 5000);
+window.cards = cardHandlers;
+//socket.send(JSON.stringify({"action": "SubAdd", subs: ["5~CCCAGG~BTC~USD"]}))

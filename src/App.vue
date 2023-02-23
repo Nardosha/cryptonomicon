@@ -295,14 +295,17 @@ export default {
   },
 
   methods: {
-    formatPrice(price) {
-      if (price === "-") return price;
-      return price > 1 ? price.toFixed(2) : price.toPrecision(2);
+    formatPrice(inputPrice) {
+      if (!inputPrice || inputPrice === "-") return price;
+      const price = Number(inputPrice);
+      return price > 1 ? price : price.toFixed(3);
     },
 
     updateCards(updatedCardName, updatedPrice) {
       this.cards.find((card) => {
         if (card.name === updatedCardName) {
+          this.diagram.push(updatedPrice);
+          console.log( this.diagram);
           card.price = updatedPrice;
         }
       });
@@ -317,13 +320,14 @@ export default {
 
       this.isValid = this.validate(cardName);
       if (!this.isValid) return;
-      this.filter = "";
 
       const newCard = { name: cardName, price: "-" };
       if (!this.allCards.includes(newCard.name)) return;
 
       this.cards = [...this.cards, newCard];
       this.filter = "";
+
+      console.log(newCard);
       subscribeToCard(cardName, (newPrice) =>
         this.updateCards(cardName, newPrice),
       );
