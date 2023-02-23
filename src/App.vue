@@ -11,12 +11,13 @@
             <div class="mt-1 relative rounded-md shadow-md">
               <input
                 v-model="input"
-                @keydown.enter="add"
                 type="text"
                 name="wallet"
                 id="wallet"
                 class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
                 placeholder="Например DOGE"
+                @keydown.enter="add"
+                @input="onInput"
               />
             </div>
             <div
@@ -33,7 +34,7 @@
               </span>
             </div>
             <div v-if="!isValid" class="text-sm text-red-600">
-              Такой тикер уже добавлен
+              {{ validationMessage }}
             </div>
           </div>
         </div>
@@ -59,7 +60,7 @@
         </button>
       </section>
 
-      <template v-if="cards.length">
+      <template v-if="savedCards.length">
         <hr class="w-full border-t border-gray-600 my-4" />
         <div>
           Фильтр:
@@ -122,7 +123,7 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      {{ cards }}
+      {{ savedCards }}
       <section v-if="selectedCard" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{ selectedCard.name }} - USD
@@ -176,45 +177,24 @@ export default {
   data() {
     return {
       input: "",
-      cards: [],
+      savedCards: [],
       selectedCard: null,
       diagram: [],
       listSummary: {},
-      allCards: [],
+      cardList: [],
       hints: [],
       isValid: true,
       currentPage: 1,
       filter: "",
+      validationMessage: "",
     };
   },
 
   async created() {
-    const windowParams = Object.fromEntries(
-      new URL(window.location).searchParams.entries(),
-    );
+    this.setWindowParams();
+    this.cardList = await getAllCards();
 
-    if (windowParams.filter) {
-      this.filter = windowParams.filter;
-    }
-
-    if (windowParams.page) {
-      this.currentPage = windowParams.page;
-    }
-
-    this.allCards = await getAllCards();
-
-    const savedCards = localStorage.getItem("cryptonomicon-list");
-
-    if (savedCards) {
-      this.cards = JSON.parse(savedCards);
-
-      this.cards.forEach((card) => {
-        // const price = card.price;
-        subscribeToCard(card.name, (newPrice) =>
-          this.updateCards(card.name, newPrice),
-        );
-      });
-    }
+    this.setSavedCards();
   },
 
   computed: {
@@ -231,7 +211,7 @@ export default {
     },
 
     filteredCards() {
-      return this.cards.filter((card) =>
+      return this.savedCards.filter((card) =>
         card.name.includes(this.filter.toUpperCase()),
       );
     },
@@ -261,6 +241,13 @@ export default {
   },
 
   watch: {
+    hints: {
+      handler() {
+        this.hints.length = this.hints.length > 4 ? 4 : this.hints.length;
+      },
+      deep: true,
+    },
+
     pageStateOptions() {
       window.history.pushState(
         null,
@@ -269,8 +256,11 @@ export default {
       );
     },
 
-    cards() {
-      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.cards));
+    savedCards() {
+      localStorage.setItem(
+        "cryptonomicon-list",
+        JSON.stringify(this.savedCards),
+      );
     },
 
     selectedCard() {
@@ -289,8 +279,6 @@ export default {
 
     input() {
       this.isValid = true;
-      this.checkCardInMonetList();
-      this.hitsHandler();
     },
   },
 
@@ -298,17 +286,21 @@ export default {
     formatPrice(inputPrice) {
       if (!inputPrice || inputPrice === "-") return price;
       const price = Number(inputPrice);
-      return price > 1 ? price : price.toFixed(3);
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2);
     },
 
     updateCards(updatedCardName, updatedPrice) {
-      this.cards.find((card) => {
+      this.savedCards.find((card) => {
         if (card.name === updatedCardName) {
           this.diagram.push(updatedPrice);
-          console.log( this.diagram);
           card.price = updatedPrice;
         }
       });
+    },
+
+    onInput(e) {
+      const inputValue = e.target.value.toUpperCase();
+      this.hints = this.cardList.filter((card) => card.startsWith(inputValue));
     },
 
     addToInput(cardName) {
@@ -322,12 +314,11 @@ export default {
       if (!this.isValid) return;
 
       const newCard = { name: cardName, price: "-" };
-      if (!this.allCards.includes(newCard.name)) return;
+      if (!this.cardList.includes(newCard.name)) return;
 
-      this.cards = [...this.cards, newCard];
+      this.savedCards = [...this.savedCards, newCard];
       this.filter = "";
 
-      console.log(newCard);
       subscribeToCard(cardName, (newPrice) =>
         this.updateCards(cardName, newPrice),
       );
@@ -340,7 +331,7 @@ export default {
     },
 
     handleDelete(card) {
-      this.cards = this.cards.filter((item) => item !== card);
+      this.savedCards = this.savedCards.filter((item) => item !== card);
       if (this.selectedCard === card) {
         this.selectedCard = null;
       }
@@ -350,9 +341,7 @@ export default {
 
     checkCardInMonetList() {
       let matches = this.input.toUpperCase();
-      this.hints = this.allCards.filter((card) => {
-        return card.startsWith(matches) ? card : false;
-      });
+      this.hints = this.cardList.filter((card) => card.startsWith(matches));
     },
 
     hitsHandler() {
@@ -362,13 +351,61 @@ export default {
     },
 
     validate(cardName) {
-      return !this.cards.find((card) => card.name === cardName);
+      if (!cardName) {
+        this.validationMessage = "Введите название валюты";
+        return false;
+      }
+
+      const isDuplicate = this.savedCards.find(
+        (card) => card.name === cardName,
+      );
+      if (isDuplicate) {
+        this.validationMessage = "Валюта уже добавлена";
+        return false;
+      }
+
+      const isNonExistCard = this.cardList.find(
+        (card) => card.name === cardName,
+      );
+      if (!isNonExistCard) {
+        this.validationMessage = " Валюты не существует";
+        return false;
+      }
+      return true;
     },
 
     deleteFromLocalStorage(deletedCard) {
       const cards = JSON.parse(localStorage.getItem("cryptonomicon-list"));
       const newCards = cards.filter((card) => card.name !== deletedCard);
       localStorage.setItem("cryptonomicon-list", JSON.stringify(newCards));
+    },
+
+    setSavedCards() {
+      const savedCards = localStorage.getItem("cryptonomicon-list");
+
+      if (savedCards) {
+        this.savedCards = JSON.parse(savedCards);
+
+        this.savedCards.forEach((card) => {
+          subscribeToCard(card.name, (newPrice) =>
+            this.updateCards(card.name, newPrice),
+          );
+        });
+      }
+    },
+
+    setWindowParams() {
+      const windowParams = Object.fromEntries(
+        new URL(window.location).searchParams.entries(),
+      );
+
+      if (windowParams.filter) {
+        this.filter = windowParams.filter;
+      }
+
+      if (windowParams.page) {
+        this.currentPage = windowParams.page;
+      }
     },
   },
 };
