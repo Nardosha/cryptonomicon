@@ -11,12 +11,13 @@
             <div class="mt-1 relative rounded-md shadow-md">
               <input
                 v-model="input"
-                @keydown.enter="add"
                 type="text"
                 name="wallet"
                 id="wallet"
                 class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
                 placeholder="Например DOGE"
+                @keydown.enter="add"
+                @input="onInput"
               />
             </div>
             <div
@@ -33,7 +34,7 @@
               </span>
             </div>
             <div v-if="!isValid" class="text-sm text-red-600">
-              Такой тикер уже добавлен
+              {{ validationMessage }}
             </div>
           </div>
         </div>
@@ -59,7 +60,7 @@
         </button>
       </section>
 
-      <template v-if="cards.length">
+      <template v-if="savedCards.length">
         <hr class="w-full border-t border-gray-600 my-4" />
         <div>
           Фильтр:
@@ -95,7 +96,7 @@
                 {{ card.name }} - USD
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ card.price }}
+                {{ formatPrice(card.price) }}
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
@@ -122,7 +123,7 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      {{ cards }}
+      {{ savedCards }}
       <section v-if="selectedCard" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{ selectedCard.name }} - USD
@@ -168,52 +169,32 @@
 </template>
 
 <script>
+import { getAllCards, subscribeToCard, unsubscribeToCard } from "@/api";
+
 export default {
   name: "App",
 
   data() {
     return {
       input: "",
-      cards: [],
+      savedCards: [],
       selectedCard: null,
       diagram: [],
       listSummary: {},
-      monetsList: [],
+      cardList: [],
       hints: [],
       isValid: true,
       currentPage: 1,
       filter: "",
+      validationMessage: "",
     };
   },
 
-  created() {
-    const windowParams = Object.fromEntries(
-      new URL(window.location).searchParams.entries(),
-    );
+  async created() {
+    this.setWindowParams();
+    this.cardList = await getAllCards();
 
-    if (windowParams.filter) {
-      this.filter = windowParams.filter;
-    }
-
-    if (windowParams.page) {
-      this.currentPage = windowParams.page;
-    }
-
-    setTimeout(() => {
-      fetch("https://min-api.cryptocompare.com/data/all/coinlist?summary=true")
-        .then((res) => res.json())
-        .then((json) => ({ ...this.listSummary } = json.Data))
-        .then((res) => (this.monetsList = Object.keys(res)));
-    }, 2000);
-
-    const cardsList = localStorage.getItem("cryptonomicon-list");
-
-    if (cardsList) {
-      this.cards = JSON.parse(cardsList);
-      this.cards.forEach((card) => {
-        this.updateData(card.name);
-      });
-    }
+    this.setSavedCards();
   },
 
   computed: {
@@ -230,7 +211,7 @@ export default {
     },
 
     filteredCards() {
-      return this.cards.filter((card) =>
+      return this.savedCards.filter((card) =>
         card.name.includes(this.filter.toUpperCase()),
       );
     },
@@ -260,6 +241,13 @@ export default {
   },
 
   watch: {
+    hints: {
+      handler() {
+        this.hints.length = this.hints.length > 4 ? 4 : this.hints.length;
+      },
+      deep: true,
+    },
+
     pageStateOptions() {
       window.history.pushState(
         null,
@@ -268,8 +256,11 @@ export default {
       );
     },
 
-    cards() {
-      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.cards));
+    savedCards() {
+      localStorage.setItem(
+        "cryptonomicon-list",
+        JSON.stringify(this.savedCards),
+      );
     },
 
     selectedCard() {
@@ -288,27 +279,28 @@ export default {
 
     input() {
       this.isValid = true;
-      this.checkCardInMonetList();
-      this.hitsHandler();
     },
   },
 
   methods: {
-    updateData(cardName) {
-      setInterval(async () => {
-        const request = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${cardName}&tsyms=USD&api_key=bc114e8d5a851c5ff1b5bd8eeeae629d2141bbd1d6a12f08b0fc38aee0e76a34`,
-        );
-        const response = await request.json();
-        this.cards.find((card) => card.name === cardName).price =
-          response.USD > 1
-            ? response.USD.toFixed(2)
-            : response.USD.toPrecision(2);
+    formatPrice(inputPrice) {
+      if (!inputPrice || inputPrice === "-") return price;
+      const price = Number(inputPrice);
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2);
+    },
 
-        if (this.selectedCard?.name === cardName) {
-          this.diagram.push(response.USD);
+    updateCards(updatedCardName, updatedPrice) {
+      this.savedCards.find((card) => {
+        if (card.name === updatedCardName) {
+          this.diagram.push(updatedPrice);
+          card.price = updatedPrice;
         }
-      }, 5000);
+      });
+    },
+
+    onInput(e) {
+      const inputValue = e.target.value.toUpperCase();
+      this.hints = this.cardList.filter((card) => card.startsWith(inputValue));
     },
 
     addToInput(cardName) {
@@ -320,13 +312,16 @@ export default {
 
       this.isValid = this.validate(cardName);
       if (!this.isValid) return;
+
+      const newCard = { name: cardName, price: "-" };
+      if (!this.cardList.includes(newCard.name)) return;
+
+      this.savedCards = [...this.savedCards, newCard];
       this.filter = "";
 
-      const newCard = { name: cardName, price: "..." };
-      if (!this.monetsList.includes(newCard.name)) return;
-
-      this.cards = [...this.cards, newCard];
-      this.updateData(newCard.name);
+      subscribeToCard(cardName, (newPrice) =>
+        this.updateCards(cardName, newPrice),
+      );
       this.input = "";
     },
 
@@ -336,18 +331,17 @@ export default {
     },
 
     handleDelete(card) {
-      this.cards = this.cards.filter((item) => item !== card);
+      this.savedCards = this.savedCards.filter((item) => item !== card);
       if (this.selectedCard === card) {
         this.selectedCard = null;
       }
+      unsubscribeToCard(card.name);
       this.deleteFromLocalStorage(card.name);
     },
 
     checkCardInMonetList() {
       let matches = this.input.toUpperCase();
-      this.hints = this.monetsList.filter((card) => {
-        return card.startsWith(matches) ? card : false;
-      });
+      this.hints = this.cardList.filter((card) => card.startsWith(matches));
     },
 
     hitsHandler() {
@@ -357,13 +351,61 @@ export default {
     },
 
     validate(cardName) {
-      return !this.cards.find((card) => card.name === cardName);
+      if (!cardName) {
+        this.validationMessage = "Введите название валюты";
+        return false;
+      }
+
+      const isDuplicate = this.savedCards.find(
+        (card) => card.name === cardName,
+      );
+      if (isDuplicate) {
+        this.validationMessage = "Валюта уже добавлена";
+        return false;
+      }
+
+      const isNonExistCard = this.cardList.find(
+        (card) => card.name === cardName,
+      );
+      if (!isNonExistCard) {
+        this.validationMessage = " Валюты не существует";
+        return false;
+      }
+      return true;
     },
 
     deleteFromLocalStorage(deletedCard) {
       const cards = JSON.parse(localStorage.getItem("cryptonomicon-list"));
       const newCards = cards.filter((card) => card.name !== deletedCard);
       localStorage.setItem("cryptonomicon-list", JSON.stringify(newCards));
+    },
+
+    setSavedCards() {
+      const savedCards = localStorage.getItem("cryptonomicon-list");
+
+      if (savedCards) {
+        this.savedCards = JSON.parse(savedCards);
+
+        this.savedCards.forEach((card) => {
+          subscribeToCard(card.name, (newPrice) =>
+            this.updateCards(card.name, newPrice),
+          );
+        });
+      }
+    },
+
+    setWindowParams() {
+      const windowParams = Object.fromEntries(
+        new URL(window.location).searchParams.entries(),
+      );
+
+      if (windowParams.filter) {
+        this.filter = windowParams.filter;
+      }
+
+      if (windowParams.page) {
+        this.currentPage = windowParams.page;
+      }
     },
   },
 };
