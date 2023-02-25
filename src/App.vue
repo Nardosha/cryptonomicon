@@ -7,7 +7,6 @@
             <label for="wallet" class="block text-sm font-medium text-gray-700"
               >Input</label
             >
-            {{ this.input }}
             <div class="mt-1 relative rounded-md shadow-md">
               <input
                 v-model="input"
@@ -170,12 +169,7 @@
 </template>
 
 <script>
-import {
-  getAllCards,
-  subscribeToBtc,
-  subscribeToCard,
-  unsubscribeToCard,
-} from "@/api";
+import { getAllCards, subscribeToCard, unsubscribeToCard } from "@/api";
 
 export default {
   name: "App",
@@ -347,8 +341,8 @@ export default {
       if (this.selectedCard === card) {
         this.selectedCard = null;
       }
-      unsubscribeToCard(card.name);
       this.deleteFromLocalStorage(card.name);
+      unsubscribeToCard(card.name);
     },
 
     checkCardInMonetList() {
